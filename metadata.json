@@ -1,0 +1,10 @@
+{
+  "name": "LevelLens Classroom",
+  "description": "Mobile-first FLN diagnostic operating system for primary teachers: stealth oral reading AI, live dynamic skill pods, classroom heatmap, and NIPUN Bharat compliance bridge.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
