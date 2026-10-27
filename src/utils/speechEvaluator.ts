@@ -73,14 +73,42 @@ export function evaluateReadingBand(wpm: number, accuracy: number): 'PRE_WORD' |
 }
 
 // Evaluate math band based on latency and correct count
-export function evaluateMathBand(correctCount: number, avgLatencyMs: number): 'COUNT_20' | 'PATTERN_OPS' | 'BORROW_OPS' {
-  if (correctCount <= 1 || avgLatencyMs > 7000) {
+export function evaluateMathBand(
+  correctCount: number, 
+  avgLatencyMs: number, 
+  totalQuestions: number = 3
+): 'COUNT_20' | 'PATTERN_OPS' | 'BORROW_OPS' {
+  const accuracy = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
+  
+  // Under 50% accuracy: Student needs foundational number sense & counting
+  if (accuracy < 50) {
     return 'COUNT_20';
   }
-  if (correctCount === 2 || avgLatencyMs > 4500) {
+
+  // 100% accuracy (e.g. 3/3): Student has mastered operations
+  if (accuracy >= 95) {
+    // Fluent rapid recall (<= 5.5s) -> Advanced BORROW_OPS
+    // Deliberate solving (e.g. 5.5s - 12s) -> Solid PATTERN_OPS
+    return avgLatencyMs <= 5500 ? 'BORROW_OPS' : 'PATTERN_OPS';
+  }
+
+  // Good accuracy (e.g. 2/3, 66%)
+  if (accuracy >= 66) {
+    if (avgLatencyMs <= 4000) {
+      return 'BORROW_OPS';
+    }
+    if (avgLatencyMs <= 9000) {
+      return 'PATTERN_OPS';
+    }
+    return 'COUNT_20';
+  }
+
+  // Moderate accuracy (50%-65%)
+  if (accuracy >= 50 && avgLatencyMs <= 5000) {
     return 'PATTERN_OPS';
   }
-  return 'BORROW_OPS';
+
+  return 'COUNT_20';
 }
 
 // Speech recognition feature detection

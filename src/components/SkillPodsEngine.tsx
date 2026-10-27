@@ -191,23 +191,27 @@ export const SkillPodsEngine: React.FC<SkillPodsEngineProps> = ({
                 {/* Cross-Grade Learner Chips */}
                 <div className="mt-4 space-y-2">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Active Cohort ({podStudents.length} Students across Gr 2–4):
+                    Active Cohort ({podStudents.length} Learners):
                   </span>
 
-                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                    {podStudents.map(student => (
-                      <span
-                        key={student.id}
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border ${
-                          student.id === 'std-1' && recentGraduation?.studentName === student.name
-                            ? 'bg-amber-400/20 border-amber-400 text-amber-200 animate-pulse font-bold'
-                            : 'bg-slate-800 border-slate-700 text-slate-200'
-                        }`}
-                      >
-                        <span>{student.name}</span>
-                        <span className="text-[10px] font-mono text-slate-400">Gr{student.grade}</span>
-                      </span>
-                    ))}
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-slate-950/60 rounded-xl border border-slate-800/80 min-h-[44px] items-center">
+                    {podStudents.length === 0 ? (
+                      <span className="text-[11px] text-slate-500 italic px-2">No learners assigned to this pod yet.</span>
+                    ) : (
+                      podStudents.map(student => (
+                        <span
+                          key={student.id}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border ${
+                            recentGraduation?.studentName === student.name
+                              ? 'bg-amber-400/20 border-amber-400 text-amber-200 animate-pulse font-bold'
+                              : 'bg-slate-800 border-slate-700 text-slate-200'
+                          }`}
+                        >
+                          <span>{student.name}</span>
+                          <span className="text-[10px] font-mono text-slate-400">Gr{student.grade}</span>
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
 

@@ -13,23 +13,25 @@ import {
   PhoneCall,
   Play
 } from 'lucide-react';
-import { Student, FLNCompetency } from '../types';
+import { Student, FLNCompetency, Organization } from '../types';
 import { OfficialReportModal } from './OfficialReportModal';
 
 interface ComplianceDashboardProps {
   students: Student[];
   competencies: FLNCompetency[];
+  organization?: Organization | null;
 }
 
 export const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({
   students,
   competencies,
+  organization,
 }) => {
   const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
-  const [selectedParentStudentId, setSelectedParentStudentId] = useState<string>('std-1'); // Aisha Patel
+  const [selectedParentStudentId, setSelectedParentStudentId] = useState<string>(students[0]?.id || '');
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
 
-  const selectedStudent = students.find(s => s.id === selectedParentStudentId) || students[0];
+  const selectedStudent = students.find(s => s.id === selectedParentStudentId) || students[0] || null;
 
   // Distribution calculations
   const total = students.length;
@@ -44,6 +46,7 @@ export const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({
 
   // Simulate IVR parent voice playback using browser SpeechSynthesis if available
   const handlePlayParentAudio = () => {
+    if (!selectedStudent) return;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const message = `Namaste! This is your weekly update from LevelLens Classroom. ${selectedStudent.name} is making great progress. She is reading with ${selectedStudent.readingWpm} words per minute. For today's home game, practice counting five pebbles together. Thank you!`;
@@ -101,31 +104,31 @@ export const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({
               Oral Reading Competency Distribution
             </h3>
             <span className="text-xs text-emerald-400 font-mono font-bold">
-              {Math.round(((sentenceCount + gradeLevelCount) / total) * 100)}% Functional Readers
+              {total > 0 ? Math.round(((sentenceCount + gradeLevelCount) / total) * 100) : 0}% Functional Readers
             </span>
           </div>
 
           {/* Stacked Bar */}
           <div className="w-full h-4 rounded-full bg-slate-800 flex overflow-hidden p-0.5 border border-slate-700">
             <div 
-              style={{ width: `${(preWordCount / total) * 100}%` }} 
+              style={{ width: `${total > 0 ? (preWordCount / total) * 100 : 0}%` }} 
               className="bg-rose-500 h-full rounded-l-full transition-all duration-500" 
-              title={`Pre-Word: ${preWordCount} (${Math.round((preWordCount/total)*100)}%)`}
+              title={`Pre-Word: ${preWordCount} (${total > 0 ? Math.round((preWordCount/total)*100) : 0}%)`}
             />
             <div 
-              style={{ width: `${(wordCount / total) * 100}%` }} 
+              style={{ width: `${total > 0 ? (wordCount / total) * 100 : 0}%` }} 
               className="bg-amber-500 h-full transition-all duration-500" 
-              title={`Word Level: ${wordCount} (${Math.round((wordCount/total)*100)}%)`}
+              title={`Word Level: ${wordCount} (${total > 0 ? Math.round((wordCount/total)*100) : 0}%)`}
             />
             <div 
-              style={{ width: `${(sentenceCount / total) * 100}%` }} 
+              style={{ width: `${total > 0 ? (sentenceCount / total) * 100 : 0}%` }} 
               className="bg-yellow-400 h-full transition-all duration-500" 
-              title={`Sentence Level: ${sentenceCount} (${Math.round((sentenceCount/total)*100)}%)`}
+              title={`Sentence Level: ${sentenceCount} (${total > 0 ? Math.round((sentenceCount/total)*100) : 0}%)`}
             />
             <div 
-              style={{ width: `${(gradeLevelCount / total) * 100}%` }} 
+              style={{ width: `${total > 0 ? (gradeLevelCount / total) * 100 : 0}%` }} 
               className="bg-emerald-500 h-full rounded-r-full transition-all duration-500" 
-              title={`Grade Level: ${gradeLevelCount} (${Math.round((gradeLevelCount/total)*100)}%)`}
+              title={`Grade Level: ${gradeLevelCount} (${total > 0 ? Math.round((gradeLevelCount/total)*100) : 0}%)`}
             />
           </div>
 
@@ -157,24 +160,24 @@ export const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({
               Foundational Numeracy Distribution
             </h3>
             <span className="text-xs text-indigo-400 font-mono font-bold">
-              {Math.round(((patternMath + borrowMath) / total) * 100)}% Basic Ops Mastered
+              {total > 0 ? Math.round(((patternMath + borrowMath) / total) * 100) : 0}% Basic Ops Mastered
             </span>
           </div>
 
           {/* Stacked Bar */}
           <div className="w-full h-4 rounded-full bg-slate-800 flex overflow-hidden p-0.5 border border-slate-700">
             <div 
-              style={{ width: `${(count20Math / total) * 100}%` }} 
+              style={{ width: `${total > 0 ? (count20Math / total) * 100 : 0}%` }} 
               className="bg-rose-500 h-full rounded-l-full transition-all duration-500" 
               title={`Count to 20: ${count20Math}`}
             />
             <div 
-              style={{ width: `${(patternMath / total) * 100}%` }} 
+              style={{ width: `${total > 0 ? (patternMath / total) * 100 : 0}%` }} 
               className="bg-amber-500 h-full transition-all duration-500" 
               title={`Basic Ops: ${patternMath}`}
             />
             <div 
-              style={{ width: `${(borrowMath / total) * 100}%` }} 
+              style={{ width: `${total > 0 ? (borrowMath / total) * 100 : 0}%` }} 
               className="bg-emerald-500 h-full rounded-r-full transition-all duration-500" 
               title={`Regrouping: ${borrowMath}`}
             />
@@ -297,49 +300,55 @@ export const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          {/* Audio Message Generator Card */}
-          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                <Volume2 className="w-4 h-4" />
-                <span>IVR 60-Second Audio Voice Dispatch</span>
+        {selectedStudent ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            {/* Audio Message Generator Card */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <Volume2 className="w-4 h-4" />
+                  <span>IVR 60-Second Audio Voice Dispatch</span>
+                </span>
+                <button
+                  onClick={handlePlayParentAudio}
+                  disabled={isPlayingAudio}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shadow transition-all disabled:opacity-60"
+                >
+                  <Play className={`w-3 h-3 fill-current ${isPlayingAudio ? 'animate-spin' : ''}`} />
+                  <span>{isPlayingAudio ? 'Playing TTS Audio...' : 'Simulate Parent Audio'}</span>
+                </button>
+              </div>
+
+              <div className="p-3 bg-slate-900 rounded-lg text-xs text-slate-300 font-mono leading-relaxed border border-slate-800">
+                <p className="text-slate-400 italic mb-1">[Hindi / English Audio Script]:</p>
+                <p>
+                  "Namaste! {selectedStudent.name} is making wonderful progress this week. She achieved {selectedStudent.readingWpm} words per minute on her story reading. Her teacher recommends practicing letter sounds together."
+                </p>
+              </div>
+            </div>
+
+            {/* Daily 2-Minute Verbal Game for Home */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" />
+                <span>Today's 2-Minute Home Game (No Materials Needed)</span>
               </span>
-              <button
-                onClick={handlePlayParentAudio}
-                disabled={isPlayingAudio}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shadow transition-all disabled:opacity-60"
-              >
-                <Play className={`w-3 h-3 fill-current ${isPlayingAudio ? 'animate-spin' : ''}`} />
-                <span>{isPlayingAudio ? 'Playing TTS Audio...' : 'Simulate Parent Audio'}</span>
-              </button>
-            </div>
 
-            <div className="p-3 bg-slate-900 rounded-lg text-xs text-slate-300 font-mono leading-relaxed border border-slate-800">
-              <p className="text-slate-400 italic mb-1">[Hindi / English Audio Script]:</p>
-              <p>
-                "Namaste! {selectedStudent.name} is making wonderful progress this week. She achieved {selectedStudent.readingWpm} words per minute on her story reading. Her teacher recommends practicing letter sounds together."
-              </p>
+              <div className="p-3 bg-slate-900 rounded-lg text-xs text-slate-300 space-y-1.5 border border-slate-800">
+                <h5 className="font-bold text-white text-xs">
+                  🎮 "Find the First Sound" Game
+                </h5>
+                <p className="text-slate-300 leading-relaxed">
+                  Ask your child: "Look around our kitchen. Can you find an item that starts with the sound /k/?" (e.g. Katori, Kela). High-five when they find it!
+                </p>
+              </div>
             </div>
           </div>
-
-          {/* Daily 2-Minute Verbal Game for Home */}
-          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4" />
-              <span>Today's 2-Minute Home Game (No Materials Needed)</span>
-            </span>
-
-            <div className="p-3 bg-slate-900 rounded-lg text-xs text-slate-300 space-y-1.5 border border-slate-800">
-              <h5 className="font-bold text-white text-xs">
-                🎮 "Find the First Sound" Game
-              </h5>
-              <p className="text-slate-300 leading-relaxed">
-                Ask your child: "Look around our kitchen. Can you find an item that starts with the sound /k/?" (e.g. Katori, Kela). High-five when they find it!
-              </p>
-            </div>
+        ) : (
+          <div className="p-6 text-center text-slate-500 bg-slate-950/60 rounded-xl border border-slate-800/80 text-xs">
+            Enroll students in the Class Map to preview automated IVR audio messages and home practice activities.
           </div>
-        </div>
+        )}
       </div>
 
       {/* Official Government Report Modal */}
@@ -347,6 +356,7 @@ export const ComplianceDashboard: React.FC<ComplianceDashboardProps> = ({
         <OfficialReportModal
           students={students}
           competencies={competencies}
+          organization={organization}
           onClose={() => setIsReportModalOpen(false)}
         />
       )}

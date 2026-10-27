@@ -12,12 +12,13 @@ import {
   Layers
 } from 'lucide-react';
 import { Student, SkillPod, ReadingLevel } from '../types';
+import { aiService } from '../services/aiService';
 
 interface StudentDrawerProps {
   student: Student | null;
   pods: SkillPod[];
   onClose: () => void;
-  onStartWeeklyCheck: (studentId: string) => void;
+  onStartWeeklyCheck: (studentId: string, domain?: 'both' | 'reading' | 'math') => void;
   onReassignPod: (studentId: string, domain: 'reading' | 'math', newPodId: any) => void;
 }
 
@@ -80,18 +81,27 @@ export const StudentDrawer: React.FC<StudentDrawerProps> = ({
 
         {/* Drawer Body (Scrollable) */}
         <div className="p-4 sm:p-5 space-y-5 overflow-y-auto flex-1 text-xs sm:text-sm">
-          {/* Quick Primary Actions */}
-          <div className="flex items-center gap-3">
+          {/* Quick Subject-Targeted Actions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <button
               onClick={() => {
                 onClose();
-                onStartWeeklyCheck(student.id);
+                onStartWeeklyCheck(student.id, 'reading');
               }}
-              className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-extrabold rounded-xl shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition-all transform active:scale-95 text-sm"
+              className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all transform active:scale-95 text-xs sm:text-sm"
             >
-              <Sparkles className="w-4 h-4 fill-current" />
-              <span>Launch Stealth Weekly Check</span>
-              <ArrowRight className="w-4 h-4" />
+              <BookOpen className="w-4 h-4" />
+              <span>Launch Oral Reading Check</span>
+            </button>
+            <button
+              onClick={() => {
+                onClose();
+                onStartWeeklyCheck(student.id, 'math');
+              }}
+              className="py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all transform active:scale-95 text-xs sm:text-sm"
+            >
+              <Calculator className="w-4 h-4" />
+              <span>Launch Mental Math Check</span>
             </button>
           </div>
 
@@ -212,6 +222,25 @@ export const StudentDrawer: React.FC<StudentDrawerProps> = ({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Gemini 3 Adaptive Next-Step Calibration */}
+          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Next Dynamic Quest (Gemini 3 Calibrated)</span>
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                Gradual Step
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              <strong className="text-emerald-400">Oral Reading:</strong> {aiService.calculateNextReadingTier(student).reason}
+            </p>
+            <p className="text-xs text-indigo-300 leading-relaxed pt-1.5 border-t border-slate-800/80">
+              <strong className="text-indigo-400">Mental Math:</strong> {aiService.calculateNextMathTier(student).reason}
+            </p>
           </div>
 
           {/* Historical Trajectory of Weekly Checks */}

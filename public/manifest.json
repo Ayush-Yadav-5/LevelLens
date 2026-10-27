@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "LevelLens Classroom",
+  "short_name": "LevelLens",
+  "description": "Android-first Primary School & Tuition OS for Grades 1-5: stealth voice diagnostics, fluid pods, and NIPUN FLN compliance.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#020617",
+  "background_color": "#020617",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

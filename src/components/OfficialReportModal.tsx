@@ -10,17 +10,19 @@ import {
   Calendar,
   Share2
 } from 'lucide-react';
-import { Student, FLNCompetency } from '../types';
+import { Student, FLNCompetency, Organization } from '../types';
 
 interface OfficialReportModalProps {
   students: Student[];
   competencies: FLNCompetency[];
+  organization?: Organization | null;
   onClose: () => void;
 }
 
 export const OfficialReportModal: React.FC<OfficialReportModalProps> = ({
   students,
   competencies,
+  organization,
   onClose,
 }) => {
   const totalStudents = students.length;
@@ -56,7 +58,8 @@ export const OfficialReportModal: React.FC<OfficialReportModalProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `NIPUN_FLN_Report_Govt_School_4_${new Date().toISOString().split('T')[0]}.csv`);
+    const schoolSlug = (organization?.name || 'School').replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute('download', `NIPUN_FLN_Report_${schoolSlug}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -113,8 +116,11 @@ export const OfficialReportModal: React.FC<OfficialReportModalProps> = ({
             </div>
 
             <div className="text-right text-xs text-slate-600 space-y-0.5 font-mono">
-              <div><span className="font-bold">UDISE+ Code:</span> 08120304912</div>
-              <div><span className="font-bold">School:</span> GPS #4 (Jaipur East)</div>
+              <div><span className="font-bold">Organisation:</span> {organization ? organization.name : 'Primary School'}</div>
+              <div><span className="font-bold">UDISE+ Code:</span> {organization?.udiseCode || 'Not applicable (Tuition/Private)'}</div>
+              {organization?.district && (
+                <div><span className="font-bold">Location:</span> {organization.district}, {organization.state}</div>
+              )}
               <div><span className="font-bold">Date:</span> {dateStr}</div>
             </div>
           </div>
@@ -124,13 +130,13 @@ export const OfficialReportModal: React.FC<OfficialReportModalProps> = ({
             <div className="p-3 rounded-lg border border-slate-300 bg-slate-50 text-center">
               <span className="text-[11px] text-slate-500 uppercase font-bold block">Total Enrolled Audited</span>
               <span className="text-2xl font-black text-slate-900 font-mono">{totalStudents}</span>
-              <span className="text-[10px] text-slate-500 block">Grades 2 to 4</span>
+              <span className="text-[10px] text-slate-500 block">Primary Grades 1 to 5</span>
             </div>
 
             <div className="p-3 rounded-lg border border-emerald-300 bg-emerald-50 text-center">
               <span className="text-[11px] text-emerald-700 uppercase font-bold block">At/Above Grade Benchmark</span>
               <span className="text-2xl font-black text-emerald-800 font-mono">
-                {Math.round((gradeLevelReading / totalStudents) * 100)}%
+                {totalStudents > 0 ? Math.round((gradeLevelReading / totalStudents) * 100) : 0}%
               </span>
               <span className="text-[10px] text-emerald-600 block">{gradeLevelReading} Learners fluent</span>
             </div>
@@ -138,7 +144,7 @@ export const OfficialReportModal: React.FC<OfficialReportModalProps> = ({
             <div className="p-3 rounded-lg border border-rose-300 bg-rose-50 text-center">
               <span className="text-[11px] text-rose-700 uppercase font-bold block">Critical Intervention Pod</span>
               <span className="text-2xl font-black text-rose-800 font-mono">
-                {Math.round((preWordReading / totalStudents) * 100)}%
+                {totalStudents > 0 ? Math.round((preWordReading / totalStudents) * 100) : 0}%
               </span>
               <span className="text-[10px] text-rose-600 block">{preWordReading} in Sound Sleuths</span>
             </div>

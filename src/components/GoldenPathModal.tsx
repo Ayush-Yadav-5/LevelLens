@@ -29,7 +29,7 @@ export const GoldenPathModal: React.FC<GoldenPathModalProps> = ({
       tab: 'weekly-check' as ActiveTab,
       icon: Mic,
       tag: 'Voice Diagnostic Engine',
-      description: 'Run oral reading diagnostic on Aisha Patel. Click "Simulate Child Audio" or speak into mic; words highlight green in real-time, WPM & accuracy calculated.',
+      description: 'Run oral reading diagnostic on any enrolled student. Click "Simulate Child Audio" or speak into mic; words highlight green in real-time, WPM & accuracy calculated.',
       buttonLabel: 'Launch Step 1 (Weekly Check)',
     },
     {
@@ -38,7 +38,7 @@ export const GoldenPathModal: React.FC<GoldenPathModalProps> = ({
       tab: 'pods' as ActiveTab,
       icon: Users,
       tag: 'Dynamic Cohorts',
-      description: 'Watch Aisha graduate from Sound Sleuths ➔ Word Builders. See cross-grade pods (Grades 2-4) update with 10-minute low-resource micro-activities.',
+      description: 'Watch the student graduate from Sound Sleuths ➔ Word Builders. See cross-grade pods (Grades 1-5) update with 10-minute low-resource micro-activities.',
       buttonLabel: 'Inspect Step 2 (Skill Pods)',
     },
     {
