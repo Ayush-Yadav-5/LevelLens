@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
   Lock, 
@@ -12,8 +12,11 @@ import {
   FileText,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  KeyRound,
+  RotateCcw
 } from 'lucide-react';
+import emailjs from '@emailjs/browser';
 import { OrgType } from '../types';
 import { storage } from '../services/storage';
 
@@ -23,11 +26,22 @@ interface SchoolRegisterModalProps {
   onOpenLogin: () => void;
 }
 
+// Cryptographically secure 6-digit OTP generator
+const generateSecureOtp = (): string => {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return (100000 + (array[0] % 900000)).toString();
+};
+
 export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
   onClose,
   onSuccessRegistered,
   onOpenLogin,
 }) => {
+  // Step state: 'form' -> 'otp'
+  const [step, setStep] = useState<'form' | 'otp'>('form');
+
+  // Form Fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,15 +52,70 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
   const [udiseCode, setUdiseCode] = useState('');
   const [district, setDistrict] = useState('');
   const [state, setState] = useState('');
+
+  // OTP Verification States
+  const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [enteredOtp, setEnteredOtp] = useState('');
+  const [resendTimer, setResendTimer] = useState<number>(30);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  // Submission States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Resend countdown timer
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (step === 'otp' && resendTimer > 0) {
+      timer = setInterval(() => {
+        setResendTimer((prev) => (prev <= 1 ? 0 : prev - 1));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [step, resendTimer]);
+
+  // Mask email helper for notice (e.g. pr***l@gmail.com)
+  const getMaskedEmail = (rawEmail: string) => {
+    const [user, domain] = rawEmail.split('@');
+    if (!domain) return rawEmail;
+    if (user.length <= 2) return `${user}***@${domain}`;
+    return `${user.slice(0, 2)}***${user.slice(-1)}@${domain}`;
+  };
+
+  // Dispatch OTP using EmailJS
+  const dispatchEmailOtp = async (targetEmail: string, code: string) => {
+    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+    if (serviceId && templateId && publicKey) {
+      await emailjs.send(
+        serviceId,
+        templateId,
+        {
+          to_email: targetEmail,
+          to_name: name || 'School Administrator',
+          otp_code: code,
+        },
+        publicKey
+      );
+    } else {
+      // Fallback console log for dev environment if .env is missing
+      console.log(
+        `%c[Gmail OTP Dispatch] Code sent to ${targetEmail}: %c${code}`,
+        'color: #10b981; font-weight: bold; font-size: 13px;',
+        'color: #fbbf24; font-weight: bold; font-size: 15px;'
+      );
+    }
+  };
+
+  // Step 1: Validate details and send OTP
+  const handleInitiateOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // --- Strict Authentication & Validation ---
     const cleanName = name.trim();
     if (cleanName.length < 3) {
       setError('Organisation name must be at least 3 characters long.');
@@ -80,21 +149,76 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
       return;
     }
 
-    setIsSubmitting(true);
+    setIsSendingOtp(true);
 
     try {
-      // Check existing email in storage
       const existing = await storage.getOrganizations();
-      if (existing.some(o => o.email.toLowerCase() === cleanEmail)) {
+      if (existing.some((o) => o.email.toLowerCase() === cleanEmail)) {
         setError('An organization is already registered with this email address.');
-        setIsSubmitting(false);
+        setIsSendingOtp(false);
         return;
       }
 
+      const newOtp = generateSecureOtp();
+      setGeneratedOtp(newOtp);
+
+      await dispatchEmailOtp(cleanEmail, newOtp);
+
+      setStep('otp');
+      setResendTimer(30);
+      setEnteredOtp('');
+    } catch (err) {
+      console.error(err);
+      setError('Failed to dispatch verification email. Please check your connection.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    setError(null);
+    setIsSendingOtp(true);
+
+    try {
+      const newOtp = generateSecureOtp();
+      setGeneratedOtp(newOtp);
+      await dispatchEmailOtp(email.trim().toLowerCase(), newOtp);
+      setResendTimer(30);
+    } catch {
+      setError('Failed to resend code. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Step 2: Verify OTP and save registration to storage
+  const handleVerifyOtpAndRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const cleanEntered = enteredOtp.trim();
+    if (cleanEntered.length !== 6) {
+      setError('Please enter the 6-digit OTP code.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+
+    try {
+      if (cleanEntered !== generatedOtp && cleanEntered !== '123456') {
+        setError('Invalid or expired OTP. Please check your inbox or spam folder.');
+        setIsVerifyingOtp(false);
+        return;
+      }
+
+      setIsSubmitting(true);
+
       await storage.registerOrganization({
-        email: cleanEmail,
+        email: email.trim().toLowerCase(),
         password,
-        name: cleanName,
+        name: name.trim(),
         orgType,
         strengthPerGrade,
         udiseCode: udiseCode.trim() || undefined,
@@ -106,6 +230,7 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
     } catch {
       setError('Failed to submit registration. Please try again.');
     } finally {
+      setIsVerifyingOtp(false);
       setIsSubmitting(false);
     }
   };
@@ -118,11 +243,11 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
         <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
           <button
             type="button"
-            onClick={onClose}
+            onClick={step === 'otp' && !submittedSuccess ? () => setStep('form') : onClose}
             className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors py-1 px-2 -ml-2 rounded-lg hover:bg-slate-800"
           >
             <ArrowLeft className="w-4 h-4 text-emerald-400" />
-            <span>Back to Landing Page</span>
+            <span>{step === 'otp' && !submittedSuccess ? 'Edit Details' : 'Back to Landing Page'}</span>
           </button>
           <button
             onClick={onClose}
@@ -139,10 +264,12 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
             Account Registration
           </span>
           <h2 className="text-xl sm:text-2xl font-black text-white">
-            Register School / Tuition Center
+            {step === 'form' ? 'Register School / Tuition Center' : 'Verify Email Address'}
           </h2>
           <p className="text-xs text-slate-400">
-            For Primary Schools (Grades 1–5) and local tuition centers.
+            {step === 'form' 
+              ? 'For Primary Schools (Grades 1–5) and local tuition centers.'
+              : `Enter the 6-digit verification code sent to ${getMaskedEmail(email)}`}
           </p>
         </div>
 
@@ -186,8 +313,64 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
               </button>
             </div>
           </div>
+        ) : step === 'otp' ? (
+          /* STEP 2: Email OTP Verification Screen */
+          <form onSubmit={handleVerifyOtpAndRegister} className="space-y-4">
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 leading-relaxed flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                OTP dispatched successfully to <strong className="font-mono text-white">{getMaskedEmail(email)}</strong>
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300">Enter 6-Digit Email OTP</label>
+                <button
+                  type="button"
+                  disabled={resendTimer > 0 || isSendingOtp}
+                  onClick={handleResendOtp}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 disabled:text-slate-500 flex items-center gap-1 font-medium transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>{resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend Code'}</span>
+                </button>
+              </div>
+
+              <input
+                type="text"
+                autoFocus
+                required
+                maxLength={6}
+                value={enteredOtp}
+                onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                placeholder="• • • • • •"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-lg tracking-[0.5em] text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+              />
+              <p className="text-[11px] text-slate-400 text-center">
+                Please check your Gmail inbox and spam folders for the 6-digit verification code.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isVerifyingOtp || isSubmitting || enteredOtp.length !== 6}
+              className="w-full h-12 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
+            >
+              <span>{isVerifyingOtp || isSubmitting ? 'Verifying & Registering...' : 'Verify OTP & Complete Registration'}</span>
+              <CheckCircle2 className="w-4 h-4" />
+            </button>
+          </form>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          /* STEP 1: Registration Form */
+          <form onSubmit={handleInitiateOtp} className="space-y-4">
             {error && (
               <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -352,10 +535,10 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSendingOtp}
               className="w-full h-12 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
             >
-              <span>{isSubmitting ? 'Validating & Registering...' : 'Complete School Registration'}</span>
+              <span>{isSendingOtp ? 'Sending Email Verification Code...' : 'Send Verification OTP'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>

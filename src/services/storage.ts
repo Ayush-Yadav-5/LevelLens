@@ -320,16 +320,47 @@ class StorageService {
     }
   }
 
-  async deleteOrganization(orgId: string): Promise<void> {
-    const orgs = this.getLocal<Organization[]>(ORGS_KEY, []);
-    this.setLocal(ORGS_KEY, orgs.filter(o => o.id !== orgId));
+  async deleteOrganization(orgId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. Delete organization & students in one atomic call via elevated RPC
+      if (supabase) {
+        const { error: rpcErr } = await supabase.rpc('delete_organization_cascade', {
+          p_org_id: orgId,
+        });
 
-    if (supabase) {
-      try {
-        await supabase.from('organizations').delete().eq('id', orgId);
-      } catch (err) {
-        console.error('Supabase deleteOrganization error:', err);
+        if (rpcErr) {
+          console.error('Supabase deleteOrganization RPC error:', rpcErr);
+          return { success: false, error: rpcErr.message };
+        }
       }
+
+      // 2. Remove the organization from local cache
+      const orgs = this.getLocal<Organization[]>(ORGS_KEY, []);
+      this.setLocal(ORGS_KEY, orgs.filter(o => o.id !== orgId));
+
+      // 3. Remove all cached students belonging to this organization
+      const students = this.getLocal<Student[]>(STUDENTS_KEY, []);
+      this.setLocal(STUDENTS_KEY, students.filter(s => s.orgId !== orgId));
+
+      // 4. Instantly revoke access if this school is currently logged in on this browser
+      const activeOrgStr = localStorage.getItem('levellens_active_org');
+      if (activeOrgStr) {
+        try {
+          const activeOrg = JSON.parse(activeOrgStr);
+          if (activeOrg.id === orgId) {
+            localStorage.removeItem('levellens_active_org');
+            localStorage.removeItem('levellens_auth_token');
+            localStorage.removeItem('levellens_org_session');
+          }
+        } catch {
+          // Ignore JSON parse errors
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('deleteOrganization unhandled error:', err);
+      return { success: false, error: err.message || 'Failed to delete organization' };
     }
   }
 

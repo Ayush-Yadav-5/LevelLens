@@ -17,7 +17,8 @@ import {
   Mail,
   User,
   LogOut,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { Organization, OrgStatus, AdminUser } from '../types';
 import { storage } from '../services/storage';
@@ -26,6 +27,20 @@ interface AdminApprovalModalProps {
   adminUser: AdminUser;
   onClose: () => void;
   onLogoutAdmin: () => void;
+}
+
+interface ConfirmModalState {
+  isOpen: boolean;
+  type: 'ORG' | 'ADMIN';
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+}
+
+interface BannerNotification {
+  type: 'success' | 'error';
+  message: string;
 }
 
 export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
@@ -51,6 +66,31 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
   const [adminFormSuccess, setAdminFormSuccess] = useState<string | null>(null);
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
 
+  // In-UI Action Confirmation Dialog
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmModalState>({
+    isOpen: false,
+    type: 'ORG',
+    id: '',
+    name: '',
+    title: '',
+    description: '',
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // In-UI Feedback Notification
+  const [notification, setNotification] = useState<BannerNotification | null>(null);
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+  };
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
   const loadOrgs = async () => {
     const list = await storage.getOrganizations();
     setOrgs(list);
@@ -71,6 +111,60 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
     await storage.updateOrganizationStatus(orgId, status);
     await loadOrgs();
     setIsUpdatingOrg(false);
+    showNotification('success', `Organization status updated to ${status}.`);
+  };
+
+  // Initiate In-UI confirmation for school deletion
+  const requestDeleteOrg = (orgId: string, orgName: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      type: 'ORG',
+      id: orgId,
+      name: orgName,
+      title: 'Delete Organization & Revoke Access',
+      description: `Are you sure you want to permanently delete "${orgName}"? This will immediately revoke login access and wipe all associated student roster data for this institution.`,
+    });
+  };
+
+  // Initiate In-UI confirmation for admin deletion
+  const requestDeleteAdmin = (adminId: string, adminName: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      type: 'ADMIN',
+      id: adminId,
+      name: adminName,
+      title: 'Revoke Administrator Privileges',
+      description: `Are you sure you want to remove admin access for "${adminName}"? They will no longer be able to log in or manage organizations.`,
+    });
+  };
+
+  // Execute confirmed deletion
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      if (confirmDialog.type === 'ORG') {
+        const res = await storage.deleteOrganization(confirmDialog.id);
+        if (res.success) {
+          await loadOrgs();
+          showNotification('success', `"${confirmDialog.name}" has been permanently removed.`);
+        } else {
+          showNotification('error', res.error || 'Failed to delete organization.');
+        }
+      } else if (confirmDialog.type === 'ADMIN') {
+        const res = await storage.deleteAdmin(confirmDialog.id, adminUser);
+        if (res.success) {
+          await loadAdmins();
+          showNotification('success', `Admin credentials for "${confirmDialog.name}" have been revoked.`);
+        } else {
+          showNotification('error', res.error || 'Could not delete administrator.');
+        }
+      }
+    } catch {
+      showNotification('error', 'An unexpected error occurred during deletion.');
+    } finally {
+      setIsDeleting(false);
+      setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+    }
   };
 
   const handleCreateNewAdmin = async (e: React.FormEvent) => {
@@ -122,19 +216,6 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
     }
   };
 
-  const handleDeleteAdmin = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to revoke admin access for "${name}"?`)) {
-      return;
-    }
-
-    const res = await storage.deleteAdmin(id, adminUser);
-    if (!res.success) {
-      alert(res.error || 'Could not delete administrator.');
-    } else {
-      await loadAdmins();
-    }
-  };
-
   const filtered = orgs.filter(o => {
     if (filter === 'PENDING' && o.status !== 'PENDING_APPROVAL') return false;
     if (filter === 'APPROVED' && o.status !== 'APPROVED') return false;
@@ -149,8 +230,35 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/90 backdrop-blur-md overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 text-slate-100 my-auto">
+      <div className="relative bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 text-slate-100 my-auto">
         
+        {/* Floating In-UI Toast Notification */}
+        {notification && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 max-w-md w-full px-4 animate-in fade-in slide-in-from-top-4 duration-200">
+            <div className={`p-3.5 rounded-2xl border shadow-xl flex items-center justify-between gap-3 text-xs font-semibold backdrop-blur-md ${
+              notification.type === 'success'
+                ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/40'
+                : 'bg-rose-950/90 text-rose-200 border-rose-500/40'
+            }`}>
+              <div className="flex items-center gap-2">
+                {notification.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                )}
+                <span>{notification.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotification(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-4">
           <div className="flex items-center gap-3">
@@ -335,6 +443,7 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
                         {isPending && (
                           <>
                             <button
+                              type="button"
                               onClick={() => handleUpdateStatus(org.id, 'APPROVED')}
                               disabled={isUpdatingOrg}
                               className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow transition-all disabled:opacity-50"
@@ -343,6 +452,7 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
                               <span>Approve</span>
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleUpdateStatus(org.id, 'REJECTED')}
                               disabled={isUpdatingOrg}
                               className="px-3 py-1.5 bg-slate-800 hover:bg-rose-900/60 active:scale-95 text-rose-300 font-semibold text-xs rounded-xl flex items-center gap-1 transition-all disabled:opacity-50"
@@ -359,6 +469,7 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
                               Active Organization
                             </span>
                             <button
+                              type="button"
                               onClick={() => handleUpdateStatus(org.id, 'PENDING_APPROVAL')}
                               disabled={isUpdatingOrg}
                               className="px-2.5 py-1 text-slate-400 hover:text-amber-400 text-xs transition-colors rounded-lg hover:bg-slate-800"
@@ -371,6 +482,7 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
 
                         {org.status === 'REJECTED' && (
                           <button
+                            type="button"
                             onClick={() => handleUpdateStatus(org.id, 'PENDING_APPROVAL')}
                             disabled={isUpdatingOrg}
                             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl"
@@ -378,6 +490,18 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
                             Reconsider
                           </button>
                         )}
+
+                        {/* In-UI Delete & Revoke Trigger */}
+                        <button
+                          type="button"
+                          onClick={() => requestDeleteOrg(org.id, org.name)}
+                          disabled={isUpdatingOrg}
+                          className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors border border-transparent hover:border-rose-500/30 flex items-center gap-1 text-xs font-medium disabled:opacity-50"
+                          title="Permanently Delete and Revoke Access"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Delete</span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -459,6 +583,7 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
                     <input
                       type="password"
                       required
+                      minLength={6}
                       placeholder="Min 6 characters"
                       value={newAdminPassword}
                       onChange={(e) => setNewAdminPassword(e.target.value)}
@@ -520,7 +645,8 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
                           </span>
                         ) : (
                           <button
-                            onClick={() => handleDeleteAdmin(adm.id, adm.name)}
+                            type="button"
+                            onClick={() => requestDeleteAdmin(adm.id, adm.name)}
                             className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
                             title="Delete administrator"
                           >
@@ -548,6 +674,44 @@ export const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
         </div>
 
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4 text-slate-100">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold text-white">{confirmDialog.title}</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {confirmDialog.description}
+              </p>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white text-xs font-bold rounded-xl shadow-lg shadow-rose-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Deleting...' : 'Yes, Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -23,12 +23,30 @@ interface ParentPortalViewProps {
 
 export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
   student,
-  pods,
+  pods = [],
   onLogout,
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const readingPod = pods.find(p => p.id === student.readingPodId);
-  const mathPod = pods.find(p => p.id === student.mathPodId);
+
+  // Guard against undefined or unmounted student session
+  if (!student) {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 text-center bg-slate-900 border border-slate-800 rounded-3xl space-y-4">
+        <p className="text-slate-300 text-sm">Student profile could not be loaded.</p>
+        <button
+          onClick={onLogout}
+          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-colors"
+        >
+          Return to Login
+        </button>
+      </div>
+    );
+  }
+
+  // Safe lookups with optional chaining to prevent undefined access crashes
+  const safePods = Array.isArray(pods) ? pods.filter(Boolean) : [];
+  const readingPod = safePods.find(p => p?.id === student?.readingPodId);
+  const mathPod = safePods.find(p => p?.id === student?.mathPodId);
 
   const handlePlayVoiceSummary = () => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -52,7 +70,7 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-lg">
-            {student.name.charAt(0)}
+            {student.name ? student.name.charAt(0) : 'S'}
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -62,7 +80,7 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
               <span className="text-xs text-slate-400">Roll #{student.rollNo}</span>
             </div>
             <h2 className="text-lg font-black text-white">{student.name}</h2>
-            <p className="text-xs text-slate-400">Primary Grade {student.grade} • Section {student.section}</p>
+            <p className="text-xs text-slate-400">Primary Grade {student.grade} Section {student.section}</p>
           </div>
         </div>
 
@@ -136,7 +154,7 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
           </div>
           <div className="pt-2 border-t border-slate-800">
             <span className="text-[11px] font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-              {student.readingLevel.replace('_', ' ')}
+              {student.readingLevel ? student.readingLevel.replace('_', ' ') : 'PENDING'}
             </span>
           </div>
         </div>
@@ -148,12 +166,12 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
           </span>
           <div className="flex items-baseline gap-1">
             <span className="text-3xl font-black text-white font-mono">
-              {(student.mathLatencyMs / 1000).toFixed(1)}s
+              {student.mathLatencyMs ? (student.mathLatencyMs / 1000).toFixed(1) : '0.0'}s
             </span>
             <span className="text-xs text-slate-400">speed</span>
           </div>
           <div className="text-xs text-slate-300">
-            Level: <strong className="text-indigo-400">{student.mathLevel.replace('_', ' ')}</strong>
+            Level: <strong className="text-indigo-400">{student.mathLevel ? student.mathLevel.replace('_', ' ') : 'PENDING'}</strong>
           </div>
           <div className="pt-2 border-t border-slate-800">
             <span className="text-[11px] font-bold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
@@ -177,7 +195,7 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
           </p>
           <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-xs text-slate-400">
             <span className="font-semibold text-slate-300">Activity in class: </span>
-            {readingPod.activities[0]?.title || 'Chalk Floor Hopscotch'}
+            {readingPod.activities?.[0]?.title || 'Chalk Floor Hopscotch'}
           </div>
         </div>
       )}

@@ -556,15 +556,15 @@ export default function App() {
             />
           )}
 
-          {/* Parent Mobile OTP Login Modal */}
           {isParentLoginOpen && (
             <ParentLoginModal
-              onSuccess={(session) => {
+              onSuccess={(student) => {
                 handleSignOutAll();
-                setParentSession(session);
+                setParentSession({ student });
+                setIsParentLoginOpen(false);
               }}
               onClose={() => setIsParentLoginOpen(false)}
-              onSwitchToSchoolLogin={() => {
+              onOpenSchoolLogin={() => {
                 setIsParentLoginOpen(false);
                 setIsSchoolLoginOpen(true);
               }}
