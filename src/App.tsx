@@ -29,6 +29,8 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { ParentLoginModal } from './components/ParentLoginModal';
 import { ParentPortalView } from './components/ParentPortalView';
 import { AddStudentModal } from './components/AddStudentModal';
+import { EditStudentModal } from './components/EditStudentModal';
+import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { Lock } from 'lucide-react';
 
 export default function App() {
@@ -49,6 +51,16 @@ export default function App() {
   const [isParentLoginOpen, setIsParentLoginOpen] = useState<boolean>(false);
   const [isAddStudentOpen, setIsAddStudentOpen] = useState<boolean>(false);
   const [isGoldenPathModalOpen, setIsGoldenPathModalOpen] = useState<boolean>(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+
+  // Forgot password modal state (tracks whether it's for 'school' or 'admin')
+  const [forgotPasswordState, setForgotPasswordState] = useState<{
+    isOpen: boolean;
+    type: 'school' | 'admin';
+  }>({
+    isOpen: false,
+    type: 'school',
+  });
 
   // Students & Pods for active school organization
   const [students, setStudents] = useState<Student[]>([]);
@@ -86,8 +98,10 @@ export default function App() {
     setIsSchoolRegisterOpen(false);
     setIsAdminLoginOpen(false);
     setIsParentLoginOpen(false);
+    setForgotPasswordState((prev) => ({ ...prev, isOpen: false }));
     setSelectedStudentId(null);
     setActiveAssessmentStudentId(null);
+    setEditingStudent(null);
     setStudents([]);
     try {
       localStorage.removeItem('levellens_active_org_v3');
@@ -186,7 +200,6 @@ export default function App() {
     const targetStudent = students.find(s => s.id === studentId);
     if (!targetStudent) return;
 
-    // Determine pods based strictly on evaluated domain!
     let updatedReadingPodId = targetStudent.readingPodId;
     let updatedMathPodId = targetStudent.mathPodId;
 
@@ -315,6 +328,30 @@ export default function App() {
     }
   };
 
+  // Update existing student details
+  const handleUpdateStudent = async (updatedStudent: Student) => {
+    await storage.updateStudent(updatedStudent);
+    setStudents(prev => prev.map(s => s.id === updatedStudent.id ? updatedStudent : s));
+    if (selectedStudentId === updatedStudent.id) {
+      setSelectedStudentId(updatedStudent.id);
+    }
+  };
+
+  // Delete student from roster
+  const handleDeleteStudent = async (studentId: string) => {
+    await storage.deleteStudent(studentId);
+    setStudents(prev => prev.filter(s => s.id !== studentId));
+    if (selectedStudentId === studentId) {
+      setSelectedStudentId(null);
+    }
+    if (activeAssessmentStudentId === studentId) {
+      setActiveAssessmentStudentId(null);
+    }
+    if (editingStudent?.id === studentId) {
+      setEditingStudent(null);
+    }
+  };
+
   const selectedStudent = students.find(s => s.id === selectedStudentId) || null;
 
   return (
@@ -339,7 +376,7 @@ export default function App() {
           ========================================================================
         */
         <div className="flex-1 flex flex-col w-full">
-          {/* Header Navbar - Clean, no debug bezels, no admin buttons when in School mode */}
+          {/* Header Navbar */}
           <HeaderNavbar
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -461,7 +498,7 @@ export default function App() {
             )}
           </main>
 
-          {/* Footer: When logged out, shows discreet staff/admin link. When school is logged in, no admin link is displayed */}
+          {/* Footer */}
           <footer className="mt-auto py-3.5 px-4 sm:px-6 border-t border-slate-900 bg-slate-950 text-slate-500 text-xs flex flex-col sm:flex-row items-center justify-between gap-2 max-w-7xl mx-auto w-full">
             <div className="flex items-center gap-2 text-[11px]">
               <span>LevelLens Primary OS • NIPUN FLN Standard</span>
@@ -469,7 +506,6 @@ export default function App() {
               <span className="text-slate-500">Grades 1–5</span>
             </div>
 
-            {/* Admin entry point ONLY shown when completely logged out on landing page */}
             {!currentOrg && !parentSession && (
               <div>
                 <button
@@ -496,6 +532,18 @@ export default function App() {
                 setActiveTab('weekly-check');
               }}
               onReassignPod={handleReassignPod}
+              onEditStudent={(studentToEdit) => setEditingStudent(studentToEdit)}
+              onDeleteStudent={handleDeleteStudent}
+            />
+          )}
+
+          {/* Edit Student Modal */}
+          {editingStudent && (
+            <EditStudentModal
+              student={editingStudent}
+              onUpdateStudent={handleUpdateStudent}
+              onDeleteStudent={handleDeleteStudent}
+              onClose={() => setEditingStudent(null)}
             />
           )}
 
@@ -526,6 +574,10 @@ export default function App() {
                 setIsSchoolLoginOpen(false);
                 setIsParentLoginOpen(true);
               }}
+              onOpenForgotPassword={() => {
+                setIsSchoolLoginOpen(false);
+                setForgotPasswordState({ isOpen: true, type: 'school' });
+              }}
               onClose={() => setIsSchoolLoginOpen(false)}
             />
           )}
@@ -545,17 +597,39 @@ export default function App() {
             />
           )}
 
-          {/* Admin Login Modal (Restricted to Owner & Administrators) */}
+          {/* Admin Login Modal */}
           {isAdminLoginOpen && (
             <AdminLoginModal
               onSuccess={(admin) => {
                 handleSignOutAll();
                 setCurrentAdmin(admin);
               }}
+              onOpenForgotPassword={() => {
+                setIsAdminLoginOpen(false);
+                setForgotPasswordState({ isOpen: true, type: 'admin' });
+              }}
               onClose={() => setIsAdminLoginOpen(false)}
             />
           )}
 
+          {/* Forgot Password Modal (Shared for School and Admin) */}
+          {forgotPasswordState.isOpen && (
+            <ForgotPasswordModal
+              accountType={forgotPasswordState.type}
+              onClose={() => setForgotPasswordState(prev => ({ ...prev, isOpen: false }))}
+              onOpenLogin={() => {
+                const targetType = forgotPasswordState.type;
+                setForgotPasswordState(prev => ({ ...prev, isOpen: false }));
+                if (targetType === 'admin') {
+                  setIsAdminLoginOpen(true);
+                } else {
+                  setIsSchoolLoginOpen(true);
+                }
+              }}
+            />
+          )}
+
+          {/* Parent Login Modal */}
           {isParentLoginOpen && (
             <ParentLoginModal
               onSuccess={(student) => {

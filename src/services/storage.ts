@@ -257,7 +257,6 @@ class StorageService {
   async getOrganizations(): Promise<Organization[]> {
     if (supabase) {
       try {
-        // Never query passwords from remote DB
         const { data, error } = await supabase
           .from('organizations')
           .select('id, name, email, org_type, status, district, state, udise_code, strength_per_grade, created_at');
@@ -274,6 +273,69 @@ class StorageService {
       }
     }
     return this.getLocal<Organization[]>(ORGS_KEY, []);
+  }
+
+  async findSchoolByEmail(email: string): Promise<Organization | null> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('id, name, email, org_type, status, district, state, udise_code, strength_per_grade, created_at')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (!error && data) {
+          return dbToOrg(data);
+        }
+      } catch (err) {
+        console.warn('Supabase findSchoolByEmail exception:', err);
+      }
+    }
+
+    const orgs = this.getLocal<Organization[]>(ORGS_KEY, []);
+    return orgs.find((o) => o.email.toLowerCase() === cleanEmail) || null;
+  }
+
+  async resetSchoolPassword(email: string, newPassword: string): Promise<boolean> {
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Remote update with RPC or direct trigger update
+    if (supabase) {
+      try {
+        const { error: rpcError } = await supabase.rpc('reset_org_password', {
+          p_email: cleanEmail,
+          p_new_password: newPassword,
+        });
+
+        if (!rpcError) {
+          return true;
+        }
+
+        // Direct table update fallback (triggers hash triggers if defined)
+        const { error: updateError } = await supabase
+          .from('organizations')
+          .update({ password: newPassword })
+          .eq('email', cleanEmail);
+
+        if (!updateError) {
+          return true;
+        }
+      } catch (err) {
+        console.warn('Supabase resetSchoolPassword exception:', err);
+      }
+    }
+
+    // 2. Offline fallback
+    const orgs = this.getLocal<Organization[]>(ORGS_KEY, []);
+    const index = orgs.findIndex((o) => o.email.toLowerCase() === cleanEmail);
+    if (index !== -1) {
+      orgs[index].password = newPassword;
+      this.setLocal(ORGS_KEY, orgs);
+      return true;
+    }
+
+    return false;
   }
 
   async registerOrganization(org: Omit<Organization, 'id' | 'createdAt' | 'status'>): Promise<Organization> {
@@ -295,7 +357,6 @@ class StorageService {
       }
     }
 
-    // Strip password before updating local cache
     const cachedOrg = { ...newOrg, password: '' };
     const current = this.getLocal<Organization[]>(ORGS_KEY, []);
     this.setLocal(ORGS_KEY, [cachedOrg, ...current]);
@@ -322,7 +383,6 @@ class StorageService {
 
   async deleteOrganization(orgId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // 1. Delete organization & students in one atomic call via elevated RPC
       if (supabase) {
         const { error: rpcErr } = await supabase.rpc('delete_organization_cascade', {
           p_org_id: orgId,
@@ -334,15 +394,12 @@ class StorageService {
         }
       }
 
-      // 2. Remove the organization from local cache
       const orgs = this.getLocal<Organization[]>(ORGS_KEY, []);
       this.setLocal(ORGS_KEY, orgs.filter(o => o.id !== orgId));
 
-      // 3. Remove all cached students belonging to this organization
       const students = this.getLocal<Student[]>(STUDENTS_KEY, []);
       this.setLocal(STUDENTS_KEY, students.filter(s => s.orgId !== orgId));
 
-      // 4. Instantly revoke access if this school is currently logged in on this browser
       const activeOrgStr = localStorage.getItem('levellens_active_org');
       if (activeOrgStr) {
         try {
@@ -353,7 +410,7 @@ class StorageService {
             localStorage.removeItem('levellens_org_session');
           }
         } catch {
-          // Ignore JSON parse errors
+          // Ignore parse errors
         }
       }
 
@@ -406,6 +463,28 @@ class StorageService {
         }
       } catch (err) {
         console.error('Supabase saveStudent network error:', err);
+      }
+    }
+  }
+
+  async updateStudent(student: Student): Promise<void> {
+    const all = this.getLocal<Student[]>(STUDENTS_KEY, []);
+    const updated = all.map(s => s.id === student.id ? student : s);
+    this.setLocal(STUDENTS_KEY, updated);
+
+    if (supabase) {
+      try {
+        const dbPayload = studentToDb(student);
+        const { error } = await supabase
+          .from('students')
+          .update(dbPayload)
+          .eq('id', student.id);
+
+        if (error) {
+          console.error('Supabase updateStudent error:', error);
+        }
+      } catch (err) {
+        console.error('Supabase updateStudent network error:', err);
       }
     }
   }
@@ -500,6 +579,66 @@ class StorageService {
     return admins;
   }
 
+  async findAdminByEmail(email: string): Promise<AdminUser | null> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('admins')
+          .select('id, name, email, role, created_at')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (!error && data) {
+          return dbToAdmin(data);
+        }
+      } catch (err) {
+        console.warn('Supabase findAdminByEmail exception:', err);
+      }
+    }
+
+    const admins = this.getLocal<AdminUser[]>(ADMINS_KEY, []);
+    return admins.find((a) => a.email.toLowerCase() === cleanEmail) || null;
+  }
+
+  async resetAdminPassword(email: string, newPassword: string): Promise<boolean> {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (supabase) {
+      try {
+        const { error: rpcError } = await supabase.rpc('reset_admin_password', {
+          p_email: cleanEmail,
+          p_new_password: newPassword,
+        });
+
+        if (!rpcError) {
+          return true;
+        }
+
+        const { error: updateError } = await supabase
+          .from('admins')
+          .update({ password: newPassword })
+          .eq('email', cleanEmail);
+
+        if (!updateError) {
+          return true;
+        }
+      } catch (err) {
+        console.warn('Supabase resetAdminPassword exception:', err);
+      }
+    }
+
+    const admins = this.getLocal<AdminUser[]>(ADMINS_KEY, []);
+    const index = admins.findIndex((a) => a.email.toLowerCase() === cleanEmail);
+    if (index !== -1) {
+      admins[index].password = newPassword;
+      this.setLocal(ADMINS_KEY, admins);
+      return true;
+    }
+
+    return false;
+  }
+
   async authenticateAdmin(email: string, password: string): Promise<AdminUser | null> {
     const cleanEmail = email.trim().toLowerCase();
 
@@ -519,7 +658,7 @@ class StorageService {
       }
     }
 
-    // 2. Offline fallback (only matches unhashed local mock if running disconnected)
+    // 2. Offline fallback
     const admins = this.getLocal<AdminUser[]>(ADMINS_KEY, []);
     const match = admins.find(
       a => a.email.toLowerCase() === cleanEmail && a.password && a.password === password
@@ -582,7 +721,6 @@ class StorageService {
 
     if (supabase) {
       try {
-        // Attempt server-side hashed RPC first
         const { data: rpcData, error: rpcError } = await supabase.rpc('create_admin', {
           p_name: newAdmin.name,
           p_email: cleanEmail,
@@ -593,7 +731,6 @@ class StorageService {
         if (!rpcError && rpcData) {
           createdRecord = dbToAdmin(rpcData);
         } else {
-          // Fallback to direct insert if RPC isn't available
           const directAdmin: AdminUser = {
             ...newAdmin,
             email: cleanEmail,

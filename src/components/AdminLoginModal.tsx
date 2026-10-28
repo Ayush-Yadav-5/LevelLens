@@ -4,23 +4,25 @@ import {
   Lock, 
   Mail, 
   ArrowRight, 
-  ArrowLeft,
+  ArrowLeft, 
   X, 
-  AlertCircle,
-  Eye,
-  EyeOff,
-  KeyRound
+  AlertCircle, 
+  Eye, 
+  EyeOff, 
+  KeyRound 
 } from 'lucide-react';
 import { AdminUser } from '../types';
 import { storage } from '../services/storage';
 
 interface AdminLoginModalProps {
   onSuccess: (admin: AdminUser) => void;
+  onOpenForgotPassword?: () => void;
   onClose: () => void;
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   onSuccess,
+  onOpenForgotPassword,
   onClose,
 }) => {
   const [email, setEmail] = useState('');
@@ -127,7 +129,18 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Password</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300">Password</label>
+              {onOpenForgotPassword && (
+                <button
+                  type="button"
+                  onClick={onOpenForgotPassword}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                >
+                  Forgot Password?
+                </button>
+              )}
+            </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               <input

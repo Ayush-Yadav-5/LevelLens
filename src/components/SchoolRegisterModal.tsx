@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building2, 
   Lock, 
@@ -55,10 +55,14 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
 
   // OTP Verification States
   const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [otpExpiry, setOtpExpiry] = useState<number | null>(null);
   const [enteredOtp, setEnteredOtp] = useState('');
   const [resendTimer, setResendTimer] = useState<number>(30);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  // Using a ref to prevent any state desync during verification
+  const activeOtpRef = useRef<string>('');
 
   // Submission States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,12 +106,7 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
         publicKey
       );
     } else {
-      // Fallback console log for dev environment if .env is missing
-      console.log(
-        `%c[Gmail OTP Dispatch] Code sent to ${targetEmail}: %c${code}`,
-        'color: #10b981; font-weight: bold; font-size: 13px;',
-        'color: #fbbf24; font-weight: bold; font-size: 15px;'
-      );
+      console.warn('EmailJS environment variables missing. Verify VITE_EMAILJS_* keys in .env');
     }
   };
 
@@ -160,7 +159,11 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
       }
 
       const newOtp = generateSecureOtp();
+      const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minute expiry
+
       setGeneratedOtp(newOtp);
+      activeOtpRef.current = newOtp;
+      setOtpExpiry(expiresAt);
 
       await dispatchEmailOtp(cleanEmail, newOtp);
 
@@ -183,9 +186,15 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
 
     try {
       const newOtp = generateSecureOtp();
+      const expiresAt = Date.now() + 10 * 60 * 1000;
+
       setGeneratedOtp(newOtp);
+      activeOtpRef.current = newOtp;
+      setOtpExpiry(expiresAt);
+
       await dispatchEmailOtp(email.trim().toLowerCase(), newOtp);
       setResendTimer(30);
+      setEnteredOtp('');
     } catch {
       setError('Failed to resend code. Please try again.');
     } finally {
@@ -193,26 +202,36 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
     }
   };
 
-  // Step 2: Verify OTP and save registration to storage
+  // Step 2: Strict OTP verification & submission
   const handleVerifyOtpAndRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     const cleanEntered = enteredOtp.trim();
     if (cleanEntered.length !== 6) {
-      setError('Please enter the 6-digit OTP code.');
+      setError('Please enter the full 6-digit OTP code.');
       return;
     }
 
     setIsVerifyingOtp(true);
 
     try {
-      if (cleanEntered !== generatedOtp && cleanEntered !== '123456') {
-        setError('Invalid or expired OTP. Please check your inbox or spam folder.');
+      // 1. Check expiration
+      if (otpExpiry && Date.now() > otpExpiry) {
+        setError('This verification code has expired. Please tap "Resend Code".');
         setIsVerifyingOtp(false);
         return;
       }
 
+      // 2. Strict OTP comparison (checks activeOtpRef and state)
+      const expectedOtp = activeOtpRef.current || generatedOtp;
+      if (!expectedOtp || cleanEntered !== expectedOtp) {
+        setError('Incorrect verification code. Please check your email and enter the exact 6-digit code.');
+        setIsVerifyingOtp(false);
+        return;
+      }
+
+      // 3. Register organization once OTP matches strictly
       setIsSubmitting(true);
 
       await storage.registerOrganization({
@@ -226,6 +245,9 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
         state: state.trim(),
       });
 
+      // Invalidate the OTP once verified successfully
+      setGeneratedOtp('');
+      activeOtpRef.current = '';
       setSubmittedSuccess(true);
     } catch {
       setError('Failed to submit registration. Please try again.');
@@ -314,7 +336,7 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
             </div>
           </div>
         ) : step === 'otp' ? (
-          /* STEP 2: Email OTP Verification Screen */
+          /* STEP 2: Strict Email OTP Verification Screen */
           <form onSubmit={handleVerifyOtpAndRegister} className="space-y-4">
             {error && (
               <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
@@ -355,7 +377,7 @@ export const SchoolRegisterModal: React.FC<SchoolRegisterModalProps> = ({
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-lg tracking-[0.5em] text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors font-mono"
               />
               <p className="text-[11px] text-slate-400 text-center">
-                Please check your Gmail inbox and spam folders for the 6-digit verification code.
+                Please check your inbox or spam folder for the 6-digit verification code.
               </p>
             </div>
 

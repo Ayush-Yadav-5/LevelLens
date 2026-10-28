@@ -4,13 +4,11 @@ import {
   Lock, 
   Mail, 
   ArrowRight, 
-  ArrowLeft,
-  X,
-  ShieldCheck, 
+  ArrowLeft, 
+  X, 
   PhoneCall, 
-  AlertCircle,
-  School,
-  UserCheck
+  AlertCircle, 
+  School 
 } from 'lucide-react';
 import { Organization } from '../types';
 import { storage } from '../services/storage';
@@ -19,6 +17,7 @@ interface SchoolLoginModalProps {
   onSuccess: (org: Organization) => void;
   onOpenRegister: () => void;
   onOpenParentLogin: () => void;
+  onOpenForgotPassword?: () => void;
   onClose: () => void;
 }
 
@@ -26,6 +25,7 @@ export const SchoolLoginModal: React.FC<SchoolLoginModalProps> = ({
   onSuccess,
   onOpenRegister,
   onOpenParentLogin,
+  onOpenForgotPassword,
   onClose,
 }) => {
   const [email, setEmail] = useState('');
@@ -142,7 +142,18 @@ export const SchoolLoginModal: React.FC<SchoolLoginModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Password</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300">Password</label>
+              {onOpenForgotPassword && (
+                <button
+                  type="button"
+                  onClick={onOpenForgotPassword}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+                >
+                  Forgot Password?
+                </button>
+              )}
+            </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               <input
