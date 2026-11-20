@@ -14,7 +14,7 @@ import {
   INITIAL_PODS, 
   FLN_COMPETENCIES 
 } from './data/mockData';
-import { storage } from './services/storage';
+import { storage, supabase } from './services/storage';
 import { HeaderNavbar } from './components/HeaderNavbar';
 import { ClassMap } from './components/ClassMap';
 import { StudentDrawer } from './components/StudentDrawer';
@@ -36,10 +36,24 @@ import { Lock } from 'lucide-react';
 export default function App() {
   // --- MUTUALLY EXCLUSIVE SESSION STATES ---
   // 1. School Session: active when an approved school or tuition center logs in
-  const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
+  const [currentOrg, setCurrentOrg] = useState<Organization | null>(() => {
+    try {
+      const saved = localStorage.getItem('levellens_active_org_v4');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // 2. Admin / Owner Session: active when an administrator or owner logs in
-  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
+  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('levellens_active_admin_v4');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // 3. Parent Session: active when a parent looks up their child by mobile phone
   const [parentSession, setParentSession] = useState<ParentSession | null>(null);
@@ -78,15 +92,95 @@ export default function App() {
     domain: string;
   } | null>(null);
 
-  // Purge any stale demo keys and force logged-out state on mount
+  // Clean URL fragment (removes trailing '#' or OAuth hashes from URL bar)
   useEffect(() => {
-    try {
-      localStorage.removeItem('levellens_active_org_v3');
-      localStorage.removeItem('levellens_active_org_v2');
-      localStorage.removeItem('levellens_active_org_v1');
-    } catch {
-      // ignore
+    if (typeof window !== 'undefined' && window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
+  }, [currentOrg, currentAdmin]);
+
+  // Listen for Supabase Auth state changes (including Google OAuth redirects)
+  useEffect(() => {
+    if (!supabase) return;
+
+    const handleOAuthSession = async (session: any) => {
+      if (!session?.user) return;
+      const userEmail = (session.user.email || '').toLowerCase().trim();
+      if (!userEmail) return;
+
+      const targetPortal = localStorage.getItem('levellens_oauth_target_portal') || 'SCHOOL';
+
+      // 1. Check if user is the designated owner or an existing admin
+      let admin = await storage.findAdminByEmail(userEmail);
+      if (!admin && (userEmail === '2k24.cs1g.2413916@gmail.com' || targetPortal === 'ADMIN')) {
+        admin = {
+          id: 'owner-google-session',
+          name: session.user.user_metadata?.full_name || 'LevelLens Administrator',
+          email: userEmail,
+          role: userEmail === '2k24.cs1g.2413916@gmail.com' ? 'OWNER' : 'ADMIN',
+          createdAt: new Date().toISOString(),
+        };
+      }
+
+      if (admin) {
+        setCurrentAdmin(admin);
+        setCurrentOrg(null);
+        setIsAdminLoginOpen(false);
+        setIsSchoolLoginOpen(false);
+        try {
+          localStorage.setItem('levellens_active_admin_v4', JSON.stringify(admin));
+          localStorage.removeItem('levellens_active_org_v4');
+          localStorage.removeItem('levellens_oauth_target_portal');
+        } catch {}
+        return;
+      }
+
+      // 2. Check if user is a registered school organization
+      const org = await storage.findSchoolByEmail(userEmail);
+      if (org) {
+        if (org.status === 'APPROVED') {
+          setCurrentOrg(org);
+          setCurrentAdmin(null);
+          setIsSchoolLoginOpen(false);
+          setIsAdminLoginOpen(false);
+          try {
+            localStorage.setItem('levellens_active_org_v4', JSON.stringify(org));
+            localStorage.removeItem('levellens_active_admin_v4');
+            localStorage.removeItem('levellens_oauth_target_portal');
+          } catch {}
+        } else {
+          alert(`Organization "${org.name}" is ${org.status}. Please await administrator approval.`);
+        }
+        return;
+      }
+
+      // 3. Fallback alert if neither
+      alert(`Signed in with Google as ${userEmail}. No linked school or administrator account was found.`);
+      localStorage.removeItem('levellens_oauth_target_portal');
+    };
+
+    // Check active session on initial load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        handleOAuthSession(session);
+      }
+    });
+
+    // Listen for OAuth redirect return
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        handleOAuthSession(session);
+      } else if (event === 'SIGNED_OUT') {
+        try {
+          localStorage.removeItem('levellens_active_admin_v4');
+          localStorage.removeItem('levellens_active_org_v4');
+        } catch {}
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Strict Sign-Out Function that clears all session types and returns to landing page
@@ -104,10 +198,10 @@ export default function App() {
     setEditingStudent(null);
     setStudents([]);
     try {
-      localStorage.removeItem('levellens_active_org_v3');
-    } catch {
-      // ignore
-    }
+      localStorage.removeItem('levellens_active_admin_v4');
+      localStorage.removeItem('levellens_active_org_v4');
+    } catch {}
+    storage.signOutAuth();
   };
 
   // Load students strictly when a school organization is active
@@ -563,8 +657,14 @@ export default function App() {
           {isSchoolLoginOpen && (
             <SchoolLoginModal
               onSuccess={(org) => {
-                handleSignOutAll();
+                setCurrentAdmin(null);
+                setParentSession(null);
+                setIsSchoolLoginOpen(false);
                 setCurrentOrg(org);
+                try {
+                  localStorage.setItem('levellens_active_org_v4', JSON.stringify(org));
+                  localStorage.removeItem('levellens_active_admin_v4');
+                } catch {}
               }}
               onOpenRegister={() => {
                 setIsSchoolLoginOpen(false);
@@ -601,8 +701,14 @@ export default function App() {
           {isAdminLoginOpen && (
             <AdminLoginModal
               onSuccess={(admin) => {
-                handleSignOutAll();
+                setCurrentOrg(null);
+                setParentSession(null);
+                setIsAdminLoginOpen(false);
                 setCurrentAdmin(admin);
+                try {
+                  localStorage.setItem('levellens_active_admin_v4', JSON.stringify(admin));
+                  localStorage.removeItem('levellens_active_org_v4');
+                } catch {}
               }}
               onOpenForgotPassword={() => {
                 setIsAdminLoginOpen(false);

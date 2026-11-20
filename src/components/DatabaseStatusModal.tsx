@@ -81,31 +81,7 @@ ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.skill_pods ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Public access organizations" ON public.organizations;
-CREATE POLICY "Public access organizations" ON public.organizations FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Public access admins" ON public.admins;
-CREATE POLICY "Public access admins" ON public.admins FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Public access students" ON public.students;
-CREATE POLICY "Public access students" ON public.students FOR ALL USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Public access skill_pods" ON public.skill_pods;
-CREATE POLICY "Public access skill_pods" ON public.skill_pods FOR ALL USING (true) WITH CHECK (true);
-
-INSERT INTO public.admins (id, name, email, password, role, created_at)
-VALUES (
-    'owner-levellens-root',
-    'LevelLens',
-    '2k24.cs1g.2413916@gmail.com',
-    'LL_01#786',
-    'OWNER',
-    NOW()
-)
-ON CONFLICT (email) DO UPDATE SET 
-    name = EXCLUDED.name,
-    password = EXCLUDED.password,
-    role = EXCLUDED.role;
+-- Note: Secure production schema with pgcrypto hashing and role-based policies is configured in supabase-schema.sql.
 `;
 
 export const DatabaseStatusModal: React.FC<DatabaseStatusModalProps> = ({ isOpen, onClose }) => {

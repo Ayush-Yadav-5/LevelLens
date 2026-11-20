@@ -1,11 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 import { Student, ReadingLevel, MathLevel } from '../types';
 
-// Safely retrieve Gemini API Key from Vite env or process.env
-const apiKey = 
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
-  (typeof process !== 'undefined' && (process.env?.GEMINI_API_KEY || process.env?.API_KEY)) ||
-  '';
+// Retrieve Gemini API Key strictly in local development.
+// In production, all AI calls are safely proxied through /api/gemini to prevent client key exposure.
+const apiKey = import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY || '') : '';
 
 const isGeminiKeyConfigured = Boolean(
   apiKey && 
@@ -164,10 +162,31 @@ function safeParseJson<T>(rawText: string, fallback: T): T {
 }
 
 /**
- * Resilient API execution: tries the designated primary model first.
- * If 429 rate-limited or 503 unavailable, shifts dynamically to alternate active models.
+ * Resilient API execution:
+ * 1. Attempts the secure serverless backend proxy (/api/gemini) first to protect keys from client exposure.
+ * 2. Falls back to client-side GoogleGenAI if running locally in offline/prototype mode.
+ * 3. Gracefully defaults to deterministic curriculum banks if all endpoints are unavailable.
  */
 async function callGeminiWithFallback(prompt: string, primaryModel: string): Promise<string | null> {
+  // 1. Primary: Try secure serverless proxy (/api/gemini)
+  try {
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model: primaryModel }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.text) {
+        return data.text;
+      }
+    }
+  } catch {
+    // Backend endpoint not responding (e.g. static dev server), proceed to local client fallback
+  }
+
+  // 2. Secondary fallback: Local browser client (dev mode)
   if (!aiClient) return null;
 
   const candidateModels = Array.from(new Set([
@@ -212,7 +231,7 @@ async function callGeminiWithFallback(prompt: string, primaryModel: string): Pro
 }
 
 export const aiService = {
-  isConfigured: () => isGeminiKeyConfigured,
+  isConfigured: () => isGeminiKeyConfigured || import.meta.env.PROD,
 
   calculateNextReadingTier: (student: Student): { targetLevel: ReadingLevel; tierIndex: number; reason: string } => {
     const grade = student.grade;
